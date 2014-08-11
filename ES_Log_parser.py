@@ -1,32 +1,55 @@
+#!/usr/bin/env python
+
+import fileinput
+import json
+
+try:
+    import argparse
+except ImportError, e:
+    print e, '\nYour system has not module required.\n' \
+             'To install required module please use:\n' \
+             'easy_install module or pip install module'
+    exit()
+
+#Assume standard log4j output.
+#txt file containing info, warning, and debug statements
+#We intentionally pull out the debugging es queries if they exist
+def toJson(filename, start_line_number):
+    json_string = ''
+    with open(filename, 'r') as file:
+        #start at message body
+        cur_line = start_line_number+1
+        #find start of the query
+        while not(filename.get(cur_line).contain("query")):
+            cur_line += 1
+        #now we have the start of the query.
+        #parse through. +1 for {
+        # -1 for } we have finished when == 0
+        depth = 1
+        json_string.append(filename.get(cur_line))
+        cur_line+=1
+        while depth > 0:
+            line = filename.get(cur_line)
+            if line.contains("{"):
+                depth += 1
+            if line.contains("}"):
+                depth -= 1
+            json_string.append(line)
+
+        return json.loads(json_string)
 
 
-##!/usr/bin/env python
+def parse_file(filename):
+    json_list_map_by_table = {}
+    for line in fileinput.input(filename):
+        next_is_table=False
+        for word in line.split():
+            if next_is_table:
+                json_list_map_by_table[word].add(toJson(filename, fileinput.filelineno()))
+                next_is_table=False
+            if word.contains('SearchIndexQueryService'):
+                next_is_table=True
 
-orig_logs = open('/Users/clayton.stout/BazaarVoice/SQLDebug.txt','r')
-metrics = open('/Users/clayton.stout/BazaarVoice/metrics1.txt', 'w')
-tables = open('/Users/clayton.stout/BazaarVoice/tables1.txt','w')
-
-metrics_list = {}
-for line in orig_logs:
-    next_is_table=False
-    for word in line.split():
-        #print(word)
-        if next_is_table:
-            #print("writing" + word)
-            tables.write('from '+word+'\n')
-            if word in metrics_list:
-                metrics_list[word]=metrics_list[word]+1
-            else:
-                metrics_list[word]=1
-            next_is_table=False
-        if word=='from':
-            next_is_table=True
-
-for table in sorted(metrics_list, key=metrics_list.get, reverse=True):
-    metrics.write("Table: "+table+", num calls: "+str(metrics_list[table])+"\n")
-
-metrics.close()
-tables.close()
 
 def main():
     p = argparse.ArgumentParser(description = 'Tool to take in log4j out file with ES Debug logging and parse/classify the JSON queries',
@@ -43,7 +66,13 @@ def main():
                    help='Interactive Mode. Default is %(default)s')
     p.add_argument('-t', '--table', dest='table', default='',
                    help='Table filter param. Default is %(default)s')
-    p.add_argument('-l', '--list', dest='clusters', default='false', choices=['true','false'],
+    p.add_argument('-l', '--list', dest='list', default='false', choices=['true','false'],
                    help='List the queries for the provided filter. Default is: do not list')
+    p.add_argument('filename', dest='filename', nargs=1, type=str,
+                    help='The path to the log file to parse')
 
     options = p.parse_args()
+
+    #Return a map of tables to a list of json queries to that table
+    json_map = parse_file(options.filename)
+
