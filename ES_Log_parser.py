@@ -50,6 +50,22 @@ def parse_file(filename):
             if word.contains('SearchIndexQueryService'):
                 next_is_table=True
 
+    return json_list_map_by_table
+
+def print_tables(json_map, table_filter, list):
+    for table in json_map.keys():
+        if table.contains(table_filter):
+            print table + "    " + len(json_map.get(table))
+
+    if list:
+        for table in json_map.keys():
+            if table.contains(table_filter):
+                print table + "    " + len(json_map.get(table))
+                for json_obj in json_map.get(table):
+                    print json.dumps(json_obj,separators=(',',':'),indent=4)
+
+
+
 
 def main():
     p = argparse.ArgumentParser(description = 'Tool to take in log4j out file with ES Debug logging and parse/classify the JSON queries',
@@ -64,7 +80,7 @@ def main():
 
     p.add_argument('-i', '--interactive', dest='interactive', default='false', choices=['true','false'],
                    help='Interactive Mode. Default is %(default)s')
-    p.add_argument('-t', '--table', dest='table', default='',
+    p.add_argument('-t', '--table', dest='table', default=':',
                    help='Table filter param. Default is %(default)s')
     p.add_argument('-l', '--list', dest='list', default='false', choices=['true','false'],
                    help='List the queries for the provided filter. Default is: do not list')
@@ -75,4 +91,6 @@ def main():
 
     #Return a map of tables to a list of json queries to that table
     json_map = parse_file(options.filename)
+
+    print_tables(json_map, options.table, options.list)
 
