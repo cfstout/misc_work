@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import fileinput
+import jsontree
 import json
 
 try:
@@ -10,6 +11,13 @@ except ImportError, e:
              'To install required module please use:\n' \
              'easy_install module or pip install module'
     exit()
+
+def contains(base_string, term_list):
+    for term in term_list.split(" "):
+        if not term in base_string:
+            return False
+    return True
+
 
 #Assume standard log4j output.
 #txt file containing info, warning, and debug statements
@@ -34,9 +42,29 @@ def toJson(filename, start_line_number):
                 depth += 1
             if line.contains("}"):
                 depth -= 1
+                #handle edge case of trailing comma
+                if depth == 0:
+                    json_string.append("}")
+                    break
             json_string.append(line)
 
         return json.loads(json_string)
+
+#recursive search to find key in json
+def recursiveSearch(json_node, field):
+    return_list = []
+    if type(json_node) is dict:
+        for json_key in json_node:
+            if type(json_node[json_key]) in (list,dict):
+                recursiveSearch(json_node[json_key],field)
+            elif json_key == field:
+                return_list.append(json_node[json_key])
+    elif type(json_node) is list:
+        for item in json_node:
+            if type(item) in (list,dict):
+                recursiveSearch(item, field)
+
+
 
 
 def parse_file(filename):
@@ -52,17 +80,57 @@ def parse_file(filename):
 
     return json_list_map_by_table
 
-def print_tables(json_map, table_filter, list):
+def print_tables(json_map, table_filter, list, field):
     for table in json_map.keys():
-        if table.contains(table_filter):
+        if contains(table, table_filter):
             print table + "    " + len(json_map.get(table))
 
     if list:
         for table in json_map.keys():
-            if table.contains(table_filter):
+            if contains(table, table_filter):
                 print table + "    " + len(json_map.get(table))
                 for json_obj in json_map.get(table):
-                    print json.dumps(json_obj,separators=(',',':'),indent=4)
+                    if len(field)>0:
+                        print("Filtered JSON")
+                        for subset in recursiveSearch(json_obj,field):
+                            print json.dumps(subset,separators=(',',':'),indent=4)
+                    else:
+                        print json.dumps(json_obj,separators=(',',':'),indent=4)
+
+def start_interactive(json_map):
+    print ("Interactive mode: 'TableFilter' filter to search through tables, 'Expand' to expand the filtered table, \n"+
+           " 'Field' field to only expand a particular field, 'Restart' to restart, 'Quit' to quit \n" )
+
+    filter= ''
+    expand = False
+    field=''
+    while True:
+        user_command = raw_input('Selection? (TableFilter, Expand, Field,Restart,Quit')
+        if user_command.split(" ").get(0) == "TableFilter":
+            filter.append(user_command.split(" ").get(1)+" ")
+        elif user_command == "Expand":
+            expand = True
+        elif user_command.split(" ").get(0) == "Field":
+            if not expand:
+                print("Setting expand to true to do field matching")
+            expand = True
+            field = user_command.split(" ").get(1)
+        elif user_command == "Restart":
+            filter = ''
+            expand = False
+            continue
+        elif user_command == "Quit":
+            break
+        else :
+            print ("Sorry, command not recognized. Please try again.\n")
+            continue
+
+        print_tables(json_map,filter,expand,field)
+
+
+
+
+
 
 
 
@@ -92,5 +160,8 @@ def main():
     #Return a map of tables to a list of json queries to that table
     json_map = parse_file(options.filename)
 
-    print_tables(json_map, options.table, options.list)
+    if options.interactive:
+        start_interactive(json_map)
+    else:
+        print_tables(json_map, options.table, options.list, '')
 
