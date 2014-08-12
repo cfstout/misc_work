@@ -101,7 +101,11 @@ def parse_file(filename):
                 p(line_num)
             if not "SearchIndexQueryService" in line:
                 continue
-            mult_table_with_client = re.search("\[(.*)\]", line).group(0)
+            search = re.search("\[(.*)\]", line)
+            if search:
+                mult_table_with_client = search.group(0)
+            else:
+                continue
             table_name, client_name = get_table_and_client(mult_table_with_client)
             # Add 1 to line number because zero indexing
             if table_name in json_list_map_by_table:
