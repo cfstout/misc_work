@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 import json
 from progress_bar import ProgressBar
+import re
 
 try:
     import argparse
@@ -16,6 +17,22 @@ def contains(base_string, term_list):
         if not term in base_string:
             return False
     return True
+
+
+# recursive search to find key in json
+def recursive_search(json_node, field):
+    return_list = []
+    if type(json_node) is dict:
+        for json_key in json_node:
+            if type(json_node[json_key]) in (list, dict):
+                return_list += recursive_search(json_node[json_key], field)
+            elif json_key == field:
+                return json_node[json_key]
+    elif type(json_node) is list:
+        for item in json_node:
+            if type(item) in (list, dict):
+                return_list += recursive_search(item, field)
+    return return_list
 
 
 # Assume standard log4j output.
@@ -42,7 +59,7 @@ def to_json(filename, start_line_number):
                 depth += 1
             if "}" in line:
                 depth -= 1
-                #handle edge case of trailing comma
+                # handle edge case of trailing comma
                 if depth == 0:
                     json_string += "}"
                     break
@@ -51,21 +68,26 @@ def to_json(filename, start_line_number):
 
         return json.loads("{" + json_string + "}")
 
+def get_table_and_client(string):
+    # check multiple table edge case
+    tables = string.split(",")
 
-# recursive search to find key in json
-def recursive_search(json_node, field):
-    return_list = []
-    if type(json_node) is dict:
-        for json_key in json_node:
-            if type(json_node[json_key]) in (list, dict):
-                return_list += recursive_search(json_node[json_key], field)
-            elif json_key == field:
-                return json_node[json_key]
-    elif type(json_node) is list:
-        for item in json_node:
-            if type(item) in (list, dict):
-                return_list += recursive_search(item, field)
-    return return_list
+    if len(tables) > 1:
+        if re.search("(\w+):(\w+)", tables[0]).group(1) == re.search("(\w+):(\w+)", tables[1].group(1)):
+            #syndication
+            clients = ""
+            for table in tables:
+                clients += re.search("(\w+):(\w+)", table).group(2)
+            return ["syndication", clients]
+        else:
+            #not syndication, just multi table search
+            table_string = ""
+            for table in tables:
+                table_string += re.search("(\w+):(\w+)", table).group(1)
+            return [table_string, re.search("(\w+):(\w+)", table[0]).group(2)]
+    else:
+        search = re.search("(\w+):(\w+)", string)
+        return search.group(1, 2)
 
 
 def parse_file(filename):
@@ -76,19 +98,16 @@ def parse_file(filename):
         for line_num, line in enumerate(file_reader):
             if line_num % 100 == 0:
                 p(line_num)
-            next_is_table = False
             if not "SearchIndexQueryService" in line:
                 continue
-            for word in line.split(" "):
-                if next_is_table:
-                    # Add 1 to line number because zero indexing
-                    if word in json_list_map_by_table:
-                        json_list_map_by_table[word].append(to_json(filename, line_num + 1))
-                    else:
-                        json_list_map_by_table[word] = [to_json(filename, line_num + 1)]
-                    next_is_table = False
-                if "SearchIndexQueryService" in word:
-                    next_is_table = True
+            mult_table_with_client = re.search("\[(.*)\]", line).group(0)
+            table_name, client_name = get_table_and_client(mult_table_with_client)
+            print table_name, client_name
+            # Add 1 to line number because zero indexing
+            if mult_table_with_client in json_list_map_by_table:
+                json_list_map_by_table[mult_table_with_client].append(to_json(filename, line_num + 1))
+            else:
+                json_list_map_by_table[mult_table_with_client] = [to_json(filename, line_num + 1)]
 
     return json_list_map_by_table
 
@@ -161,6 +180,8 @@ def main():
                    help='Table filter param. Default is %(default)s')
     p.add_argument('-l', '--list', dest='list', action="store_true",
                    help='List the queries for the provided filter. Default is: do not list')
+    p.add_argument('-c', '--client', action="store_true",
+                   help='Expand the client data in the table names')
     p.add_argument('filename', nargs=1,
                    help='The path to the log file to parse')
 
