@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 import json
+from progress_bar import ProgressBar
 
 try:
     import argparse
@@ -22,15 +23,15 @@ def contains(base_string, term_list):
 # We intentionally pull out the debugging es queries if they exist
 def to_json(filename, start_line_number):
     json_string = ''
-    with open(str(filename).strip("\'[]"), 'r') as file_reader:
+    with open(filename, 'r') as file_reader:
         # start at message body
         cur_line = start_line_number + 1
         # find start of the query
         file_lines = file_reader.readlines()
         while not ("query" in file_lines[cur_line]):
             cur_line += 1
-        #now we have the start of the query.
-        #parse through. +1 for {
+        # now we have the start of the query.
+        # parse through. +1 for {
         # -1 for } we have finished when == 0
         depth = 1
         json_string += file_lines[cur_line].strip(" \n")
@@ -48,7 +49,7 @@ def to_json(filename, start_line_number):
             json_string += line.strip(" \n")
             cur_line += 1
 
-        return json.loads("{"+json_string+"}")
+        return json.loads("{" + json_string + "}")
 
 
 # recursive search to find key in json
@@ -69,14 +70,20 @@ def recursive_search(json_node, field):
 
 def parse_file(filename):
     json_list_map_by_table = {}
-    with open(str(filename).strip("\'[]"), 'r') as file_reader:
+    num_lines = sum(1 for line in open(filename))
+    with open(filename, 'r') as file_reader:
+        p = ProgressBar("File status", 0, num_lines)
         for line_num, line in enumerate(file_reader):
+            if line_num % 100 == 0:
+                p(line_num)
             next_is_table = False
+            if not "SearchIndexQueryService" in line:
+                continue
             for word in line.split(" "):
                 if next_is_table:
                     # Add 1 to line number because zero indexing
                     if word in json_list_map_by_table:
-                        json_list_map_by_table[word].add(to_json(filename, line_num + 1))
+                        json_list_map_by_table[word].append(to_json(filename, line_num + 1))
                     else:
                         json_list_map_by_table[word] = [to_json(filename, line_num + 1)]
                     next_is_table = False
@@ -89,7 +96,7 @@ def parse_file(filename):
 def print_tables(json_map, table_filter, list_bool, field):
     for table in json_map.keys():
         if contains(table, table_filter):
-            print table + "    " + str(len(json_map.get(table)))
+            print table.ljust(30), str(len(json_map.get(table))).ljust(4)
 
     if list_bool:
         for table in json_map.keys():
@@ -161,7 +168,7 @@ def main():
     print options.interactive
 
     # Return a map of tables to a list of json queries to that table
-    json_map = parse_file(options.filename)
+    json_map = parse_file(str(options.filename).strip("\'[]"))
 
     if options.interactive:
         print "true"
