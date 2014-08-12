@@ -1,0 +1,25 @@
+08-08 11:59:48 DEBUG 3006-en_us /writereview.htm com.bazaarvoice.cca.search.service.es.SearchIndexQueryServiceJest [!catalog:cvspharmacy:] {
+  "from" : 0,
+  "size" : 1,
+  "query" : {
+    "constant_score" : {
+      "filter" : {
+        "bool" : {
+          "must" : [ {
+            "term" : {
+              "type" : "product"
+            }
+          }, {
+            "term" : {
+              "externalId.lc" : "910971"
+            }
+          }, {
+            "term" : {
+              "client" : "cvspharmacy"
+            }
+          } ]
+        }
+      }
+    }
+  }
+}
