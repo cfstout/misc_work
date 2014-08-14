@@ -195,17 +195,14 @@ def main():
                    help='List the queries for the provided filter. Default is: do not list')
     p.add_argument('-c', '--client', action="store_true",
                    help='Expand the client data in the table names')
-    p.add_argument('filename', nargs=1,
-                   help='The path to the log file to parse')
+    p.add_argument('filename', help='The path to the log file to parse')
 
     options = p.parse_args()
-    print options.interactive
 
     # Return a map of tables to a list of json queries to that table
-    json_map = parse_file(str(options.filename).strip("\'[]"))
+    json_map = parse_file(options.filename)
 
     if options.interactive:
-        print "true"
         start_interactive(json_map)
     else:
         print_tables(json_map, options.table, options.client, '')
