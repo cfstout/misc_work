@@ -5,6 +5,9 @@
 __pycache__/
 *.py[cod]
 
+#Included for testing
+json_diff.py
+
 # C extensions
 *.so
 

@@ -2,6 +2,13 @@
 import json
 from progress_bar import ProgressBar
 import re
+import sys
+sys.path.append('/Users/clayton.stout/BazaarVoice/JSON_to_JSON_diff')
+from json_diff import JSON_Diff
+import os
+
+model_dir = 'queryModels'
+
 
 try:
     import argparse
@@ -39,6 +46,7 @@ def recursive_search(json_node, field):
 # txt file containing info, warning, and debug statements
 # We intentionally pull out the debugging es queries if they exist
 def to_json(filename, start_line_number):
+    #TODO not matching because we aren't pulling the full query
     json_string = ''
     with open(filename, 'r') as file_reader:
         # start at message body
@@ -66,7 +74,7 @@ def to_json(filename, start_line_number):
             json_string += line.strip(" \n")
             cur_line += 1
 
-        return json.loads("{" + json_string + "}")
+        return "{" + json_string + "}"
 
 
 def get_table_and_client(string):
@@ -107,28 +115,45 @@ def parse_file(filename):
             else:
                 continue
             table_name, client_name = get_table_and_client(mult_table_with_client)
-            # Add 1 to line number because zero indexing
-            if table_name in json_list_map_by_table:
-                if client_name in json_list_map_by_table[table_name]:
-                    json_list_map_by_table[table_name][client_name].append(to_json(filename, line_num + 1))
+            #table name = folder with models
+
+            #write json to tmp file
+            file_writer = open(".tmp", 'w')
+            json_str = to_json(filename,line_num+1)
+            file_writer.write(json_str)
+            file_writer.close()
+            try:
+                dir_name = model_dir + '/' + table_name + '/'
+                if not os.path.exists(dir_name):
+                    os.mkdir(dir_name)
+                diff_engine = JSON_Diff(".tmp",dir_name)
+                match_query = diff_engine.getFirstMatch(True)
+                if match_query is "":
+                    match_query = "misc"
+                if table_name in json_list_map_by_table:
+                    if match_query in json_list_map_by_table[table_name]:
+                        json_list_map_by_table[table_name][match_query] += 1
+                    else:
+                        json_list_map_by_table[table_name][match_query] = 0
                 else:
-                    json_list_map_by_table[table_name][client_name] = [to_json(filename, line_num + 1)]
-            else:
-                json_list_map_by_table[table_name] = {client_name: [to_json(filename, line_num + 1)]}
+                    json_list_map_by_table[table_name] = {match_query: 0}
+            except IOError:
+                print "File read error"
+                continue
 
     return json_list_map_by_table
 
 
-def print_tables(json_map, table_filter, client_bool, field):
+def print_tables(json_map, table_filter, stats, field):
     print "\n"
 
     for table in json_map.keys():
         if contains(table, table_filter):
-            items = sum(len(json_map[table][key]) for key in json_map[table].keys())
+            items = sum(json_map[table][key] for key in json_map[table].keys())
             print table.ljust(50), str(items).ljust(4)
-            if client_bool:
-                for client in json_map[table].keys():
-                    print "\t", client.ljust(30), str(len(json_map[table][client])).ljust(4)
+            if stats:
+                for match in json_map[table].keys():
+                    print "\t", match.ljust(30), str(json_map[table][match]).ljust(4)
 
     if False: #list_bool
         for table in json_map.keys():
@@ -177,7 +202,9 @@ def start_interactive(json_map):
 
 def main():
     p = argparse.ArgumentParser(
-        description='Tool to take in log4j out file with ES Debug logging and parse/classify the JSON queries',
+        description='Tool to take in log4j out file with ES Debug logging and parse/classify the JSON queries'
+                    'for classification purposes this file assumes there are models in the queryModels directory labeled'
+                    'by the table they are querying',
         formatter_class=argparse.RawTextHelpFormatter,
         epilog='Usage examples:\n\n'
                'To interactively filter the logs in catalina.out:\n'
@@ -193,8 +220,8 @@ def main():
                    help='Table filter param. Default is %(default)s')
     p.add_argument('-l', '--list', dest='list', action="store_true",
                    help='List the queries for the provided filter. Default is: do not list')
-    p.add_argument('-c', '--client', action="store_true",
-                   help='Expand the client data in the table names')
+    p.add_argument('-m', '--match', action="store_true",
+                   help='Expand the match statistics in the table names')
     p.add_argument('filename', help='The path to the log file to parse')
 
     options = p.parse_args()
@@ -205,7 +232,7 @@ def main():
     if options.interactive:
         start_interactive(json_map)
     else:
-        print_tables(json_map, options.table, options.client, '')
+        print_tables(json_map, options.table, options.match, '')
 
 
 if __name__ == "__main__":
